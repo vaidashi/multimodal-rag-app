@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.120.1",
+    "langchain-openai>=0.1.0",
+    "langchain-pinecone>=0.0.1",
     "langchain-text-splitters>=1.0.0",
+    "pinecone-client>=3.2.2",
     "python-dotenv>=1.2.1",
     "python-multipart>=0.0.20",
     "uvicorn>=0.38.0",
