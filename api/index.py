@@ -2,10 +2,22 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
-from models import IngestResponse, DocumentChunk
+from typing import List
+from models import (
+    IngestResponse,
+    DocumentChunk,
+    ChatRequest,
+    ChatResponse,
+    DocumentSource,
+)
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_pinecone import Pinecone
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.documents import Document
+
 
 load_dotenv()
 
@@ -120,3 +132,78 @@ async def ingest_document(file: UploadFile = File(...)):
     except Exception as e:
         # Generic error handler for any other issues
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_with_document(request: ChatRequest):
+    """
+    Handles chat queries against the ingested documents.
+
+    - Accepts a query string.
+    - Retrieves relevant document chunks from Pinecone.
+    - Generates an answer using OpenAI's language model.
+    - Returns the answer along with source document information.
+    """
+    try:
+        # Initialize embeddings model
+        embeddings = OpenAIEmbeddings(
+            openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small"
+        )
+        llm = ChatOpenAI(
+            openai_api_key=OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0
+        )
+
+        # Initialize Pinecone vector store
+        vector_store = Pinecone.from_existing_index(
+            index_name=INDEX_NAME,
+            embedding=embeddings,
+        )
+
+        # Retrieve relevant documents
+        retriever = vector_store.as_retriever(
+            search_type="similarity", search_kwargs={"k": 3}
+        )
+
+        # Get documents
+        retrieved_docs = retriever.invoke(request.query)
+
+        template = """
+        You are an assistant for question-answering tasks.
+        Use the following pieces of retrieved context to answer the question.
+        If you don't know the answer, just say that you don't know.
+        Keep the answer concise.
+
+        Question: {question}
+        Context: {context}
+        Answer:
+        """
+        prompt = PromptTemplate.from_template(template)
+
+        # Construct the RAG Chain using LCEL
+        def format_docs(docs: List[Document]) -> str:
+            """Helper function to format retrieved documents into a single string."""
+            return "\n\n".join(doc.page_content for doc in docs)
+
+        rag_chain = (
+            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+
+        # Invoke the chain with the user's query
+        answer = rag_chain.invoke(request.query)
+
+        # Format sources for the response
+        sources = [
+            DocumentSource(
+                text=doc.page_content, source=doc.metadata.get("source", "Unknown")
+            )
+            for doc in retrieved_docs
+        ]
+
+        return ChatResponse(answer=answer, sources=sources)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred in the chat endpoint: {str(e)}"
+        )

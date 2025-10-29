@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
 
 
@@ -15,3 +15,23 @@ class IngestResponse(BaseModel):
     message: str
     file_name: str
     vector_count: int
+
+
+class DocumentSource(BaseModel):
+    """Schema for a source document chunk."""
+
+    text: str = Field(description="The text content of the document chunk.")
+    source: str = Field(description="The name of the source file.")
+
+
+class ChatRequest(BaseModel):
+    """Schema for a chat query."""
+
+    query: str
+
+
+class ChatResponse(BaseModel):
+    """Schema for the chat response."""
+
+    answer: str
+    sources: List[DocumentSource]
