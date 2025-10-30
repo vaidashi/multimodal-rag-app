@@ -6,9 +6,10 @@ import { UploadCloud } from 'lucide-react';
 
 interface FileUploadProps {
   onFileUpload: (file: File) => void;
+  disabled?: boolean;
 }
 
-export function FileUpload({ onFileUpload }: FileUploadProps) {
+export function FileUpload({ onFileUpload, disabled }: FileUploadProps) {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       console.log('File accepted:', acceptedFiles[0]);
@@ -24,6 +25,7 @@ export function FileUpload({ onFileUpload }: FileUploadProps) {
       'image/*': ['.jpeg', '.jpg', '.png'],
     },
     maxFiles: 1,
+    disabled,
   });
 
   return (

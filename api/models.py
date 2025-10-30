@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 
 
 class DocumentChunk(BaseModel):
@@ -28,6 +28,7 @@ class ChatRequest(BaseModel):
     """Schema for a chat query."""
 
     query: str
+    filename: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

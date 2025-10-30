@@ -138,6 +138,7 @@ async def ingest_document(file: UploadFile = File(...)):
 async def chat_with_document(request: ChatRequest):
     """
     Handles chat queries against the ingested documents.
+    Can be scoped to a specific document if filename is provided.
 
     - Accepts a query string.
     - Retrieves relevant document chunks from Pinecone.
@@ -159,9 +160,16 @@ async def chat_with_document(request: ChatRequest):
             embedding=embeddings,
         )
 
+        search_kwargs = {"k": 3}
+
+        if request.filename:
+            # If a filename is provided, filter by source metadata
+            print(f"Filtering search to document: {request.filename}")
+            search_kwargs["filter"] = {"source": request.filename}
+
         # Retrieve relevant documents
         retriever = vector_store.as_retriever(
-            search_type="similarity", search_kwargs={"k": 3}
+            search_type="similarity", search_kwargs=search_kwargs
         )
 
         # Get documents
