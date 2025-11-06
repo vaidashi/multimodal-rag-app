@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { FileUpload } from '@/components/ui/FileUpload';
 import { Document, DocumentList } from '@/components/ui/DocumentList';
 import { ChatWindow, Message } from '@/components/ui/ChatWindow';

@@ -32,7 +32,9 @@ export function FileUpload({ onFileUpload, disabled }: FileUploadProps) {
     <div
       {...getRootProps()}
       className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors
-      ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
+      ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
+      ${disabled ? 'cursor-not-allowed bg-gray-100' : ''}`}
+
     >
       <input {...getInputProps()} />
       <div className="flex flex-col items-center justify-center text-gray-500">
