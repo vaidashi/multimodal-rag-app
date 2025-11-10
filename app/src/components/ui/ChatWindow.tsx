@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Send, User, Bot } from 'lucide-react';
+import { Send, User, Bot, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface Message {
@@ -13,9 +13,11 @@ interface ChatWindowProps {
     messages: Message[];
     onSendMessage: (message: string) => void;
     isLoading: boolean;
+    isListening: boolean;
+    onMicClick: () => void;
 }
 
-export function ChatWindow({ messages, onSendMessage, isLoading }: ChatWindowProps) {
+export function ChatWindow({ messages, onSendMessage, isLoading, isListening, onMicClick }: ChatWindowProps) {
     const [input, setInput] = useState('');
 
     const handleSendMessage = (e: React.FormEvent) => {
@@ -68,14 +70,26 @@ export function ChatWindow({ messages, onSendMessage, isLoading }: ChatWindowPro
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Ask a question about your document..."
+                        placeholder={isListening ? "Listening..." : "Ask a question about your document..."}
                         className="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-200 disabled:text-gray-500 bg-white text-gray-900 placeholder:text-gray-500"
-                        disabled={isLoading}
+                        disabled={isLoading || isListening}
                     />
+                    <button
+                        type="button"
+                        onClick={onMicClick}
+                        className={cn(
+                            "p-3 text-white rounded-lg",
+                            isListening ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700",
+                            "disabled:bg-gray-300"
+                        )}
+                        disabled={isLoading}
+                    >
+                        <Mic className="w-5 h-5" />
+                    </button>
                     <button
                         type="submit"
                         className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                        disabled={isLoading}
+                        disabled={isLoading || isListening || !input.trim()}
                     >
                         <Send className="w-5 h-5" />
                     </button>

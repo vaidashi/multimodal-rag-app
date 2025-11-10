@@ -8,6 +8,7 @@ from models import (
     ChatRequest,
     ChatResponse,
     DocumentSource,
+    TTSRequest,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_pinecone import Pinecone
@@ -16,8 +17,9 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage
 import base64
-from PIL import Image
 import fitz
+from fastapi.responses import StreamingResponse
+from openai import OpenAI
 
 
 load_dotenv()
@@ -114,15 +116,28 @@ async def ingest_document(file: UploadFile = File(...)):
         print(
             f"Embedding and upserting {len(texts_for_embedding)} chunks to Pinecone..."
         )
+        print(f"Index name: {INDEX_NAME}")
+        print(
+            f"Sample metadata: {metadata_for_pinecone[0] if metadata_for_pinecone else 'None'}"
+        )
 
-        Pinecone.from_texts(
+        vector_store = Pinecone.from_texts(
             texts=texts_for_embedding,
             embedding=embeddings,
             metadatas=metadata_for_pinecone,
             index_name=INDEX_NAME,
         )
 
-        print("Upsert complete.")
+        print(f"Upsert complete. Total vectors stored: {len(texts_for_embedding)}")
+
+        # Verify data was stored by doing a quick test search
+        try:
+            test_results = vector_store.similarity_search("test", k=1)
+            print(
+                f"Verification: Index contains data (found {len(test_results)} result(s))"
+            )
+        except Exception as e:
+            print(f"Verification warning: Could not query index: {str(e)}")
 
         return IngestResponse(
             message="File ingested and vectors stored successfully.",
@@ -156,14 +171,25 @@ async def chat_with_document(request: ChatRequest):
         )
 
         # Initialize Pinecone vector store
+        print(f"Connecting to Pinecone index: {INDEX_NAME}")
         vector_store = Pinecone.from_existing_index(
             index_name=INDEX_NAME,
             embedding=embeddings,
         )
 
-        # Retrieve more documents if filtering by filename filtering in Python
-        num_docs = 10 if request.filename else 5
+        print(f"Successfully connected to Pinecone index: {INDEX_NAME}")
+
+        # Determine retrieval settings
+        num_docs = 5
         search_kwargs = {"k": num_docs}
+
+        # Add metadata filter if filename is provided
+        if request.filename:
+            print(f"Adding Pinecone metadata filter for: '{request.filename}'")
+            # Filter by the 'filename' field which contains just the filename, not page numbers
+            search_kwargs["filter"] = {"filename": {"$eq": request.filename}}
+
+        print(f"Search configuration: {search_kwargs}")
 
         # Retrieve relevant documents
         retriever = vector_store.as_retriever(
@@ -171,30 +197,29 @@ async def chat_with_document(request: ChatRequest):
         )
 
         # Get documents
+        print(f"Querying vector store with: '{request.query}'")
         retrieved_docs = retriever.invoke(request.query)
 
         print(f"Retrieved {len(retrieved_docs)} documents for query: '{request.query}'")
 
-        # Filter by filename if specified (check if source contains the filename)
-        if request.filename:
-            print(f"Filtering results to document: {request.filename}")
-            retrieved_docs = [
-                doc
-                for doc in retrieved_docs
-                if request.filename in doc.metadata.get("source", "")
-            ]
-            print(f"After filtering: {len(retrieved_docs)} documents remain")
-
-        for i, doc in enumerate(retrieved_docs[:5]):  # Show first 5
-            print(
-                f"  Doc {i + 1}: source={doc.metadata.get('source', 'Unknown')}, content_length={len(doc.page_content)}"
-            )
-            print(f"    Preview: {doc.page_content[:100]}...")
-
-        if not retrieved_docs:
-            print(
-                "WARNING: No documents retrieved! The vector store may be empty or the query didn't match anything."
-            )
+        # Debug: show what sources we got
+        if retrieved_docs:
+            print("Retrieved documents:")
+            for i, doc in enumerate(retrieved_docs[:5]):
+                source_val = doc.metadata.get("source", "MISSING")
+                print(
+                    f"  [{i}] source: '{source_val}', content preview: {doc.page_content[:80]}..."
+                )
+        else:
+            print("WARNING: No documents retrieved!")
+            if request.filename:
+                print(f"  - Tried filtering for filename: '{request.filename}'")
+                print("  - Check if metadata was stored correctly during ingestion")
+            else:
+                print("  - No filename filter was applied")
+                print(
+                    "  - The vector store may be empty or the query didn't match anything"
+                )
 
         # Format the context from retrieved documents
         context = "\n\n".join(doc.page_content for doc in retrieved_docs)
@@ -229,6 +254,36 @@ async def chat_with_document(request: ChatRequest):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"An error occurred in the chat endpoint: {str(e)}"
+        )
+
+
+@app.post("/api/tts")
+async def text_to_speech(request: TTSRequest):
+    """
+    Converts text to speech using OpenAI's TTS capabilities.
+
+    - Accepts a text string.
+    - Generates speech audio.
+    - Returns the audio as a streaming response.
+    """
+    try:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+        print("Generating speech audio...")
+        tts_response = openai_client.audio.speech.create(
+            model="tts-1",
+            voice="alloy",
+            input=request.text,
+            response_format="mp3",
+        )
+
+        return StreamingResponse(
+            tts_response.iter_bytes(),
+            media_type="audio/mpeg",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred in the TTS endpoint: {str(e)}"
         )
 
 
@@ -288,7 +343,8 @@ def process_text(text: str, filename: str) -> List[dict]:
     split_texts = text_splitter.split_text(text)
 
     documents_with_metadata = [
-        {"text": doc, "metadata": {"source": filename}} for doc in split_texts
+        {"text": doc, "metadata": {"source": filename, "filename": filename}}
+        for doc in split_texts
     ]
 
     return documents_with_metadata
@@ -318,12 +374,15 @@ def process_pdf(file_bytes: bytes, filename: str, llm: ChatOpenAI) -> List[dict]
         # Strip whitespace and check if there's meaningful text
         if text and text.strip():
             page_text_chunks = process_text(text, f"{filename}_page_{page_num + 1}")
+            # Add filename to each chunk's metadata for filtering
+            for chunk in page_text_chunks:
+                chunk["metadata"]["filename"] = filename
             documents_with_metadata.extend(page_text_chunks)
             print(f"  - Extracted {len(page_text_chunks)} text chunk(s)")
 
         # Process images on the page (limit to avoid timeouts)
         images = page.get_images(full=True)
-        
+
         if images:
             print(f"  - Found {len(images)} image(s) on page {page_num + 1}")
 
@@ -342,7 +401,8 @@ def process_pdf(file_bytes: bytes, filename: str, llm: ChatOpenAI) -> List[dict]
                 image_chunk = {
                     "text": f"Image description: {description}",
                     "metadata": {
-                        "source": f"{filename}_page_{page_num + 1}_image_{img_index + 1}"
+                        "source": f"{filename}_page_{page_num + 1}_image_{img_index + 1}",
+                        "filename": filename,
                     },
                 }
                 documents_with_metadata.append(image_chunk)
@@ -369,6 +429,6 @@ def process_image(file_bytes: bytes, filename: str, llm: ChatOpenAI) -> List[dic
     description = get_image_description(file_bytes, llm)
     document_with_metadata = {
         "text": f"Image description: {description}",
-        "metadata": {"source": filename},
+        "metadata": {"source": filename, "filename": filename},
     }
     return [document_with_metadata]

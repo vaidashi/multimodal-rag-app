@@ -36,3 +36,9 @@ class ChatResponse(BaseModel):
 
     answer: str
     sources: List[DocumentSource]
+
+
+class TTSRequest(BaseModel):
+    """Schema for text-to-speech request."""
+
+    text: str
