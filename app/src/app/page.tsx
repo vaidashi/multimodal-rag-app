@@ -51,10 +51,11 @@ export default function Home() {
         throw new Error(errorMessage);
       }
 
-      const { answer, sources } = await response.json();
+      const { answer, sources, graph_data } = await response.json();
       console.log('Chat response:', answer, sources);
+      console.log('Graph data:', graph_data);
 
-      const assistantMessage: Message = { role: 'assistant', content: answer };
+      const assistantMessage: Message = { role: 'assistant', content: answer, graph_data };
       setMessages((prev) => [...prev, assistantMessage]);
 
       // Try to play audio, but don't let it break the chat flow

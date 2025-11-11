@@ -16,11 +16,13 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage
+from langchain_core.documents import Document
 import base64
 import fitz
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
-
+import networkx as nx
+from langchain_experimental.graph_transformers import LLMGraphTransformer
 
 load_dotenv()
 
@@ -221,6 +223,10 @@ async def chat_with_document(request: ChatRequest):
                     "  - The vector store may be empty or the query didn't match anything"
                 )
 
+        # Graph extraction
+        retrieved_texts = [doc.page_content for doc in retrieved_docs]
+        graph_data = extract_and_build_graph(retrieved_texts, llm)
+
         # Format the context from retrieved documents
         context = "\n\n".join(doc.page_content for doc in retrieved_docs)
 
@@ -250,7 +256,7 @@ async def chat_with_document(request: ChatRequest):
             for doc in retrieved_docs
         ]
 
-        return ChatResponse(answer=answer, sources=sources)
+        return ChatResponse(answer=answer, sources=sources, graph_data=graph_data)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"An error occurred in the chat endpoint: {str(e)}"
@@ -432,3 +438,55 @@ def process_image(file_bytes: bytes, filename: str, llm: ChatOpenAI) -> List[dic
         "metadata": {"source": filename, "filename": filename},
     }
     return [document_with_metadata]
+
+
+def extract_and_build_graph(text_chunks: List[str], llm: ChatOpenAI) -> List[str]:
+    """Extracts knowledge triples from text chunks and returms them as formatted strings.
+
+    Args:
+        text_chunks (List[str]): A list of text chunks
+        llm (ChatOpenAI): The OpenAI model
+
+    Returns:
+        List[str]: List of formatted knowledge triples as strings.
+    """
+
+    if not text_chunks:
+        return []
+
+    graph_extraction_llm = ChatOpenAI(
+        openai_api_key=OPENAI_API_KEY, model="gpt-4o", temperature=0
+    )
+
+    llm_transformer = LLMGraphTransformer(
+        llm=graph_extraction_llm,
+    )
+
+    full_text = "\n\n".join(text_chunks)
+
+    try:
+        print("Extracting knowledge triples from text chunks...")
+        # Create a proper Document object for LangChain
+        documents = [Document(page_content=full_text)]
+        graph_documents = llm_transformer.convert_to_graph_documents(documents)
+
+        if not graph_documents:
+            print("No graph documents were created.")
+            return []
+
+        # Extract nodes and relationships from the GraphDocument
+        graph_doc = graph_documents[0]
+        formatted_triples = []
+
+        # Process relationships (edges in the knowledge graph)
+        for relationship in graph_doc.relationships:
+            subject = relationship.source.id
+            object_ = relationship.target.id
+            rel_type = relationship.type
+            formatted_triples.append(f"{subject} --{rel_type}--> {object_}")
+
+        print(f"Extracted {len(formatted_triples)} knowledge triples.")
+        return formatted_triples
+    except Exception as e:
+        print(f"Error extracting knowledge triples: {str(e)}")
+        return []

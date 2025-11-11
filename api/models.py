@@ -36,6 +36,7 @@ class ChatResponse(BaseModel):
 
     answer: str
     sources: List[DocumentSource]
+    graph_data: List[str] = []
 
 
 class TTSRequest(BaseModel):

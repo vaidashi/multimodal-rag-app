@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { Send, User, Bot, Mic } from 'lucide-react';
+import { Send, User, Bot, Mic, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface Message {
     role: 'user' | 'assistant';
     content: string;
+    graph_data?: string[];
 }
 
 interface ChatWindowProps {
@@ -45,6 +46,21 @@ export function ChatWindow({ messages, onSendMessage, isLoading, isListening, on
                             {message.role === 'user' && (
                                 <div className='flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-blue-600 text-white'>
                                     <User className="w-5 h-5" />
+                                </div>
+                            )}
+
+                            {/* --- Render Graph Data --- */}
+                            {message.role === 'assistant' && message.graph_data && message.graph_data.length > 0 && (
+                                <div className="mt-2 ml-14 p-4 border-l-2 border-gray-200">
+                                    <div className="flex items-center gap-2 mb-2 text-gray-600">
+                                        <Share2 className="w-4 h-4" />
+                                        <h4 className="font-semibold text-sm">Key Relationships Extracted:</h4>
+                                    </div>
+                                    <ul className="list-disc list-inside space-y-1 text-sm text-gray-500">
+                                        {message.graph_data.map((triple, i) => (
+                                            <li key={i}>{triple}</li>
+                                        ))}
+                                    </ul>
                                 </div>
                             )}
                         </div>
