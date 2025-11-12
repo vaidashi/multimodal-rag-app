@@ -9,6 +9,8 @@ from models import (
     ChatResponse,
     DocumentSource,
     TTSRequest,
+    VectorSearchInput,
+    GraphExtractionInput,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_pinecone import Pinecone
@@ -23,6 +25,7 @@ from fastapi.responses import StreamingResponse
 from openai import OpenAI
 import networkx as nx
 from langchain_experimental.graph_transformers import LLMGraphTransformer
+from langchain.tools import tool
 
 load_dotenv()
 
@@ -157,110 +160,68 @@ async def chat_with_document(request: ChatRequest):
     """
     Handles chat queries against the ingested documents.
     Can be scoped to a specific document if filename is provided.
+    This endpoint acts as an agentic router. It decides which tool to use
+    based on the user's query, executes it, and returns the result.
 
     - Accepts a query string.
     - Retrieves relevant document chunks from Pinecone.
     - Generates an answer using OpenAI's language model.
     - Returns the answer along with source document information.
     """
+    print("\n--- New Chat Request ---")
+    print(f"Query: '{request.query}', Filename: '{request.filename}'")
+
     try:
-        # Initialize embeddings model
-        embeddings = OpenAIEmbeddings(
-            openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small"
-        )
-        llm = ChatOpenAI(
-            openai_api_key=OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0
+        agent_llm = ChatOpenAI(
+            openai_api_key=OPENAI_API_KEY, model="gpt-4o", temperature=0
         )
 
-        # Initialize Pinecone vector store
-        print(f"Connecting to Pinecone index: {INDEX_NAME}")
-        vector_store = Pinecone.from_existing_index(
-            index_name=INDEX_NAME,
-            embedding=embeddings,
-        )
+        tools = [vector_search_rag, fact_extraction_graph]
 
-        print(f"Successfully connected to Pinecone index: {INDEX_NAME}")
+        llm_with_tools = agent_llm.bind_tools(tools)
 
-        # Determine retrieval settings
-        num_docs = 5
-        search_kwargs = {"k": num_docs}
+        agent_chain = llm_with_tools | (lambda msg: msg.tool_calls[0])
 
-        # Add metadata filter if filename is provided
-        if request.filename:
-            print(f"Adding Pinecone metadata filter for: '{request.filename}'")
-            # Filter by the 'filename' field which contains just the filename, not page numbers
-            search_kwargs["filter"] = {"filename": {"$eq": request.filename}}
+        print("Agent is deciding which tool to use...")
+        tool_call = agent_chain.invoke(request.query)
+        tool_name = tool_call["name"]
+        tool_args = {**tool_call["args"], "filename": request.filename}
 
-        print(f"Search configuration: {search_kwargs}")
+        print(f"Agent selected tool: '{tool_name}' with args: {tool_args}")
 
-        # Retrieve relevant documents
-        retriever = vector_store.as_retriever(
-            search_type="similarity", search_kwargs=search_kwargs
-        )
-
-        # Get documents
-        print(f"Querying vector store with: '{request.query}'")
-        retrieved_docs = retriever.invoke(request.query)
-
-        print(f"Retrieved {len(retrieved_docs)} documents for query: '{request.query}'")
-
-        # Debug: show what sources we got
-        if retrieved_docs:
-            print("Retrieved documents:")
-            for i, doc in enumerate(retrieved_docs[:5]):
-                source_val = doc.metadata.get("source", "MISSING")
-                print(
-                    f"  [{i}] source: '{source_val}', content preview: {doc.page_content[:80]}..."
-                )
+        if tool_name == "vector_search_rag":
+            result = vector_search_rag.invoke(tool_args)
+        elif tool_name == "fact_extraction_graph":
+            result = fact_extraction_graph.invoke(tool_args)
         else:
-            print("WARNING: No documents retrieved!")
-            if request.filename:
-                print(f"  - Tried filtering for filename: '{request.filename}'")
-                print("  - Check if metadata was stored correctly during ingestion")
-            else:
-                print("  - No filename filter was applied")
-                print(
-                    "  - The vector store may be empty or the query didn't match anything"
-                )
-
-        # Graph extraction
-        retrieved_texts = [doc.page_content for doc in retrieved_docs]
-        graph_data = extract_and_build_graph(retrieved_texts, llm)
-
-        # Format the context from retrieved documents
-        context = "\n\n".join(doc.page_content for doc in retrieved_docs)
-
-        template = """
-        You are an assistant for question-answering tasks.
-        Use the following pieces of retrieved context to answer the question.
-        If you don't know the answer, just say that you don't know.
-        Keep the answer concise.
-
-        Question: {question}
-        Context: {context}
-        Answer:
-        """
-        prompt = PromptTemplate.from_template(template)
-
-        # Create a simple chain using the already-retrieved documents
-        chain = prompt | llm | StrOutputParser()
-
-        # Invoke the chain with the formatted context and query
-        answer = chain.invoke({"question": request.query, "context": context})
-
-        # Format sources for the response
-        sources = [
-            DocumentSource(
-                text=doc.page_content, source=doc.metadata.get("source", "Unknown")
+            raise HTTPException(
+                status_code=500, detail=f"Unknown tool selected by agent: '{tool_name}'"
             )
-            for doc in retrieved_docs
-        ]
 
-        return ChatResponse(answer=answer, sources=sources, graph_data=graph_data)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"An error occurred in the chat endpoint: {str(e)}"
+        print("Tool execution complete. Preparing response...")
+        return ChatResponse(
+            answer=result["answer"],
+            sources=result["sources"],
+            graph_data=result["graph_data"],
         )
+
+    except Exception as e:
+        print(f"Error in chat endpoint: {str(e)}")
+        print("Agent failed, falling back to standard vector search...")
+        try:
+            fallback_result = vector_search_rag.invoke(
+                {"query": request.query, "filename": request.filename}
+            )
+            return ChatResponse(
+                answer=fallback_result["answer"],
+                sources=fallback_result["sources"],
+                graph_data=fallback_result["graph_data"],
+            )
+        except Exception as fallback_e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Agent and fallback failed in the chat endpoint: {str(fallback_e)}",
+            )
 
 
 @app.post("/api/tts")
@@ -291,6 +252,125 @@ async def text_to_speech(request: TTSRequest):
         raise HTTPException(
             status_code=500, detail=f"An error occurred in the TTS endpoint: {str(e)}"
         )
+
+
+@tool("vector_search_rag", args_schema=VectorSearchInput, return_direct=False)
+def vector_search_rag(query: str, filename: str | None = None) -> dict:
+    """
+    Performs a vector search against the Pinecone index.
+    Use this for general questions, summaries, or when user wants conversational answer based on document content.
+
+    Args:
+        query (str): The user's question, for semantic search.
+        filename (str | None): Optional filename to filter the search.
+    Returns:
+        dict: The search results from Pinecone in a dictionary with 'answer' and 'sources' .
+    """
+    print(
+        f"Performing vector search for query: '{query}' with filename filter: '{filename}'"
+    )
+    embeddings = OpenAIEmbeddings(
+        openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small"
+    )
+    llm = ChatOpenAI(
+        openai_api_key=OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0
+    )
+    vector_store = Pinecone.from_existing_index(
+        index_name=INDEX_NAME,
+        embedding=embeddings,
+    )
+
+    search_kwargs = {"k": 5}
+    if filename:
+        print(f"Adding Pinecone metadata filter for: '{filename}'")
+        search_kwargs["filter"] = {"filename": {"$eq": filename}}
+
+    retriever = vector_store.as_retriever(
+        search_type="similarity", search_kwargs=search_kwargs
+    )
+    retrieved_docs = retriever.invoke(query)
+    print(f"Retrieved {len(retrieved_docs)} documents for query: '{query}'")
+
+    context = "\n\n".join(doc.page_content for doc in retrieved_docs)
+    template = """
+    You are an assistant for question-answering tasks.
+    Use the following pieces of retrieved context to answer the question.
+    If you don't know the answer, just say that you don't know.
+    Keep the answer concise.
+    Question: {question}
+    Context: {context}
+    Answer:
+    """
+    prompt = PromptTemplate.from_template(template)
+    chain = prompt | llm | StrOutputParser()
+    answer = chain.invoke({"question": query, "context": context})
+
+    sources = [
+        {
+            "text": doc.page_content,
+            "source": doc.metadata.get("source", "Unknown"),
+        }
+        for doc in retrieved_docs
+    ]
+
+    return {"answer": answer, "sources": sources, "graph_data": []}
+
+
+@tool("fact_extraction_graph", args_schema=GraphExtractionInput, return_direct=False)
+def fact_extraction_graph(query: str, filename: str | None = None) -> dict:
+    """
+    Extracts knowledge triples from documents to build a knowledge graph.
+    Use this when the user asks to "list facts", "extract entities", "find relationships", or asks for a structured list of information.
+    Args:
+        query (str): The user's question to extract the graph.
+        filename (str | None): The name of the optional file to extract the graph from.
+    Returns:
+        dict: with 'graph_data' and 'sources'.
+    """
+    print(
+        f"Performing graph extraction for query: '{query}' with filename filter: '{filename}'"
+    )
+    embeddings = OpenAIEmbeddings(
+        openai_api_key=OPENAI_API_KEY, model="text-embedding-3-small"
+    )
+    llm = ChatOpenAI(
+        openai_api_key=OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0
+    )
+    vector_store = Pinecone.from_existing_index(
+        index_name=INDEX_NAME,
+        embedding=embeddings,
+    )
+
+    search_kwargs = {"k": 10}
+    if filename:
+        print(f"Adding Pinecone metadata filter for: '{filename}'")
+        search_kwargs["filter"] = {"filename": {"$eq": filename}}
+
+    retriever = vector_store.as_retriever(
+        search_type="similarity", search_kwargs=search_kwargs
+    )
+    retrieved_docs = retriever.invoke(query)
+    print(
+        f"Retrieved {len(retrieved_docs)} documents for graph extraction query: '{query}'"
+    )
+
+    retrieved_texts = [doc.page_content for doc in retrieved_docs]
+    graph_data = extract_and_build_graph(retrieved_texts, llm)
+
+    sources = [
+        {
+            "text": doc.page_content,
+            "source": doc.metadata.get("source", "Unknown"),
+        }
+        for doc in retrieved_docs
+    ]
+
+    answer = "Here are the key facts and relationships extracted from the documents."
+
+    if not graph_data:
+        answer = "No significant facts or relationships could be extracted from the documents."
+
+    return {"answer": answer, "sources": sources, "graph_data": graph_data}
 
 
 def get_image_description(image_bytes: bytes, llm: ChatOpenAI) -> str:

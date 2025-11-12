@@ -43,3 +43,21 @@ class TTSRequest(BaseModel):
     """Schema for text-to-speech request."""
 
     text: str
+
+
+class VectorSearchInput(BaseModel):
+    """Schema for vector search input."""
+
+    query: str = Field(description="The user's question, for semantic search.")
+    filename: str | None = Field(
+        default=None, description="Optional filename to filter the search."
+    )
+
+
+class GraphExtractionInput(BaseModel):
+    """Schema for graph extraction input."""
+
+    query: str = Field(description="The user's question to extract the graph.")
+    filename: str | None = Field(
+        description="The name of the optional file to extract the graph from."
+    )
