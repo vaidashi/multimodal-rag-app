@@ -180,10 +180,15 @@ async def chat_with_document(request: ChatRequest):
 
         llm_with_tools = agent_llm.bind_tools(tools)
 
-        agent_chain = llm_with_tools | (lambda msg: msg.tool_calls[0])
-
         print("Agent is deciding which tool to use...")
-        tool_call = agent_chain.invoke(request.query)
+        response = llm_with_tools.invoke(request.query)
+
+        # Check if the LLM actually called a tool
+        if not response.tool_calls or len(response.tool_calls) == 0:
+            print("Agent did not call any tools, falling back to vector search...")
+            raise ValueError("No tool calls made by agent")
+
+        tool_call = response.tool_calls[0]
         tool_name = tool_call["name"]
         tool_args = {**tool_call["args"], "filename": request.filename}
 
