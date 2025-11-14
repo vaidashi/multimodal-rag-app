@@ -1,4 +1,3 @@
-import os
 import asyncio
 from dotenv import load_dotenv
 import pandas as pd
@@ -10,7 +9,6 @@ from ragas.metrics import (
     context_precision,
     context_recall,
 )
-from ragas.llms import LangchainLLMWrapper
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from index import vector_search_rag
 
@@ -67,16 +65,16 @@ async def run_rag_pipeline(df: pd.DataFrame, filename: str) -> list:
 
         results.append(
             {
-                "user_input": question,  # Changed from "question" to match RAGAS expectation
+                "user_input": question,
                 "response": rag_result[
                     "answer"
-                ],  # Changed from "answer" to match RAGAS expectation
+                ],
                 "retrieved_contexts": [
                     source["text"] for source in rag_result["sources"]
                 ],  # Changed from "contexts"
                 "reference": row[
                     "ground_truth"
-                ],  # Changed from "ground_truth" to match RAGAS expectation
+                ],
             }
         )
     return results

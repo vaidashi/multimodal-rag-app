@@ -7,7 +7,6 @@ from models import (
     IngestResponse,
     ChatRequest,
     ChatResponse,
-    DocumentSource,
     TTSRequest,
     VectorSearchInput,
     GraphExtractionInput,
