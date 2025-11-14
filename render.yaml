@@ -2,7 +2,7 @@ services:
   - type: web
     name: multimodal-rag-api
     runtime: python
-    buildCommand: "cd api && pip install --upgrade pip && pip install -r requirements-prod.txt"
+    buildCommand: "cd api && pip install --upgrade pip && pip install 'simsimd>=5.0.0' && pip install -r requirements-prod.txt"
     startCommand: "cd api && uvicorn index:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: OPENAI_API_KEY
