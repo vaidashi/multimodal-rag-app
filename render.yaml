@@ -5,13 +5,18 @@ services:
     buildCommand: |
       cd api
       pip install --upgrade pip
-      # Install ALL packages WITHOUT version locking, letting pip resolve
+      # Install base packages
       pip install fastapi 'uvicorn[standard]' python-multipart python-dotenv
       pip install openai pymupdf pillow
-      # Install langchain without community (skip pinecone integration entirely)
-      pip install langchain-core langchain-openai langchain-text-splitters langchain-experimental langchain
-      # Install pinecone directly - latest version should work
       pip install 'pinecone-client>=5.0.0'
+      # Install LangChain packages WITHOUT dependencies
+      pip install --no-deps langchain-core langchain-openai langchain-text-splitters langchain-experimental langchain
+      # Manually install LangChain's actual dependencies
+      pip install pydantic 'pydantic-core>=2.0' pydantic-settings
+      pip install httpx requests aiohttp
+      pip install sqlalchemy tenacity jsonpatch pyyaml
+      pip install tiktoken langsmith orjson packaging
+      pip install 'numpy<2.0'
     startCommand: "cd api && uvicorn index:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: OPENAI_API_KEY
