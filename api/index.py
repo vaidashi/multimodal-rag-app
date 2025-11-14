@@ -12,7 +12,8 @@ from models import (
     GraphExtractionInput,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_pinecone import Pinecone
+from langchain_community.vectorstores import Pinecone as PineconeVectorStore
+from pinecone import Pinecone as PineconeClient
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -125,7 +126,7 @@ async def ingest_document(file: UploadFile = File(...)):
             f"Sample metadata: {metadata_for_pinecone[0] if metadata_for_pinecone else 'None'}"
         )
 
-        vector_store = Pinecone.from_texts(
+        vector_store = PineconeVectorStore.from_texts(
             texts=texts_for_embedding,
             embedding=embeddings,
             metadatas=metadata_for_pinecone,
@@ -279,7 +280,7 @@ def vector_search_rag(query: str, filename: str | None = None) -> dict:
     llm = ChatOpenAI(
         openai_api_key=OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0
     )
-    vector_store = Pinecone.from_existing_index(
+    vector_store = PineconeVectorStore.from_existing_index(
         index_name=INDEX_NAME,
         embedding=embeddings,
     )
@@ -340,7 +341,7 @@ def fact_extraction_graph(query: str, filename: str | None = None) -> dict:
     llm = ChatOpenAI(
         openai_api_key=OPENAI_API_KEY, model="gpt-3.5-turbo", temperature=0
     )
-    vector_store = Pinecone.from_existing_index(
+    vector_store = PineconeVectorStore.from_existing_index(
         index_name=INDEX_NAME,
         embedding=embeddings,
     )
