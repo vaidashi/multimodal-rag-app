@@ -12,8 +12,7 @@ from models import (
     GraphExtractionInput,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Pinecone as PineconeVectorStore
-from pinecone import Pinecone as PineconeClient
+from pinecone_store import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
