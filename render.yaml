@@ -2,7 +2,19 @@ services:
   - type: web
     name: multimodal-rag-api
     runtime: python
-    buildCommand: "cd api && pip install --upgrade pip && pip install -c constraints.txt -r requirements-prod.txt"
+    buildCommand: |
+      cd api
+      pip install --upgrade pip
+      # Install packages one by one to avoid locked dependency conflicts
+      pip install fastapi uvicorn[standard] python-multipart python-dotenv
+      pip install openai pymupdf pillow
+      pip install 'simsimd>=5.0.0'
+      pip install --no-deps langchain langchain-core langchain-openai langchain-text-splitters langchain-experimental
+      pip install langchain-pinecone pinecone-client
+      # Install remaining dependencies that langchain needs
+      pip install pydantic pydantic-core pydantic-settings
+      pip install httpx requests aiohttp
+      pip install sqlalchemy tenacity jsonpatch pyyaml numpy
     startCommand: "cd api && uvicorn index:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: OPENAI_API_KEY
