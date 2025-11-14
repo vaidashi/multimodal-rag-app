@@ -1,0 +1,2 @@
+# Constraint to prevent installation of incompatible simsimd version
+simsimd>=5.0.0,<7.0.0
