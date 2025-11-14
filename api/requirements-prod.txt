@@ -1,0 +1,29 @@
+# Core FastAPI
+fastapi==0.120.1
+uvicorn==0.38.0
+python-multipart==0.0.20
+python-dotenv==1.2.1
+
+# LangChain
+langchain==1.0.2
+langchain-core==1.0.1
+langchain-openai==1.0.1
+langchain-pinecone==0.0.1
+langchain-text-splitters==1.0.0
+langchain-experimental==0.4.0
+
+# OpenAI
+openai==2.6.1
+
+# Pinecone
+pinecone-client==3.2.2
+
+# Document processing
+pymupdf==1.26.5
+pillow>=12.0.0
+
+# Dependencies (let pip resolve compatible versions)
+pydantic>=2.12.3
+pydantic-settings>=2.12.0
+httpx>=0.28.1
+requests>=2.32.5
