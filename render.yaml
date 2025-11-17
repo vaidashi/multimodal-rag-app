@@ -5,19 +5,25 @@ services:
     buildCommand: |
       cd api
       pip install --upgrade pip
-      # Install base packages
-      pip install fastapi 'uvicorn[standard]' python-multipart python-dotenv
-      pip install openai pymupdf pillow
-      # Install pinecone-client WITHOUT dependencies (likely has the locked simsimd)
-      pip install --no-deps 'pinecone-client>=5.0.0'
-      # Install LangChain packages WITHOUT dependencies
+      # Install EVERYTHING with --no-deps to avoid any locked dependencies
+      pip install --no-deps fastapi uvicorn python-multipart python-dotenv
+      pip install --no-deps openai pymupdf pillow
+      pip install --no-deps pinecone-client
       pip install --no-deps langchain-core langchain-openai langchain-text-splitters langchain-experimental langchain
-      # Manually install ALL dependencies
-      pip install pydantic 'pydantic-core>=2.0' pydantic-settings typing-extensions
-      pip install httpx requests aiohttp certifi urllib3
-      pip install sqlalchemy tenacity jsonpatch pyyaml
-      pip install tiktoken langsmith orjson packaging tqdm
-      pip install 'numpy<2.0' jiter distro
+      # Now install all the actual runtime dependencies manually
+      pip install starlette anyio sniffio idna
+      pip install 'pydantic>=2.0' pydantic-core pydantic-settings typing-extensions
+      pip install httpx httpcore h11 certifi
+      pip install requests urllib3
+      pip install aiohttp aiohappyeyeballs frozenlist multidict yarl
+      pip install sqlalchemy greenlet
+      pip install tenacity jsonpatch jsonpointer pyyaml
+      pip install tiktoken regex
+      pip install langsmith orjson packaging
+      pip install tqdm 'numpy<2.0'
+      pip install distro jiter
+      pip install click websockets watchfiles uvloop httptools
+      pip install PyMuPDFb
     startCommand: "cd api && uvicorn index:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: OPENAI_API_KEY
