@@ -1,26 +1,49 @@
-# Ignore patterns
+# Python
 .env
 .env.local
 .venv/
 venv/
 __pycache__/
 *.pyc
-.git/
-.gitignore
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Node
 node_modules/
 .next/
-app/
-vercel.json
+out/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Documentation
 README.md
 *.md
+
+# Vercel
 .vercel/
+vercel.json
+
+# Tests and dev tools
 tests/
 *.ipynb
 evaluation_doc.txt
 check_pinecone.py
 upload_eval_doc.py
 evaluate_rag.py
+
+# Build artifacts
 requirements.txt
 requirements-prod.txt
 constraints.txt
 render.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
